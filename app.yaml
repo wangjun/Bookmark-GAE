@@ -1,0 +1,41 @@
+application: 4fa679
+version: 1
+runtime: python27
+api_version: 1
+threadsafe: yes
+
+handlers:
+- url: /static
+  static_dir: static
+
+- url: /favicon\.ico
+  static_files: favicon.ico
+  upload: favicon\.ico
+
+- url: /robots\.txt
+  static_files: robots.txt
+  upload: robots\.txt
+
+- url: /admin/.*
+  script: main.app
+  login: admin
+
+- url: /new/.*
+  script: main.app
+  login: admin
+
+- url: /upload_pic/.*
+  script: main.app
+  login: admin
+
+- url: .*
+  script: main.app
+
+libraries:
+- name: webapp2
+  version: latest
+
+
+automatic_scaling:
+  min_idle_instances: 1
+  max_idle_instances: 1
