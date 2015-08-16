@@ -5,6 +5,7 @@ __email__ = "liantian@188.com"
 
 import os
 import webapp2
+import urllib
 from google.appengine.api import users
 from google.appengine.api import images
 from google.appengine.ext.webapp import template
@@ -17,17 +18,21 @@ from models import *
 
 class Index(webapp2.RequestHandler):
     def get(self):
-        user = users.get_current_user()
-        q = Site.query().order(-Site.count).fetch(keys_only=True)
-        all_site = ndb.get_multi(q)
-        template_values = {
-            'user': user,
-            "logout": users.create_logout_url('/'),
-            "login": users.create_login_url('/'),
-            'all_site':all_site,
-        }
-        path = os.path.join(os.path.dirname(__file__)+'/templates/', 'index.html')
-        self.response.out.write(template.render(path, template_values))
+        content = memcache.get("index")
+        if content is not None:
+            pass
+        else:
+            q = Site.query().order(-Site.count).fetch(keys_only=True)
+            all_site = ndb.get_multi(q)
+            template_values = {
+                "logout": users.create_logout_url('/'),
+                "login": users.create_login_url('/'),
+                'all_site': all_site,
+            }
+            path = os.path.join(os.path.dirname(__file__) + '/templates/', 'index.html')
+            content = template.render(path, template_values)
+            memcache.add("index", content, 3600)
+        self.response.out.write(content)
 
 
 class NewSite(webapp2.RequestHandler):
@@ -38,17 +43,17 @@ class NewSite(webapp2.RequestHandler):
             "logout": users.create_logout_url('/'),
             "login": users.create_login_url('/'),
         }
-        path = os.path.join(os.path.dirname(__file__)+'/templates/', 'new.html')
+        path = os.path.join(os.path.dirname(__file__) + '/templates/', 'new.html')
         self.response.out.write(template.render(path, template_values))
 
     def post(self):
-
         obj = Site(
             title=self.request.get('InputTitle'),
             url=self.request.get('InputURL')
         )
         obj.put()
-        self.redirect('/')
+        memcache.delete("index")
+        self.redirect('/new/')
 
 
 class UploadPic(blobstore_handlers.BlobstoreUploadHandler):
@@ -59,46 +64,83 @@ class UploadPic(blobstore_handlers.BlobstoreUploadHandler):
         key = ndb.Key(urlsafe=url_string)
         site = key.get()
         template_values = {
-            'upload_url':upload_url,
-            'site':site,
+            'upload_url': upload_url,
+            'site': site,
             'user': user,
             "logout": users.create_logout_url('/'),
             "login": users.create_login_url('/'),
         }
 
-        path = os.path.join(os.path.dirname(__file__)+'/templates/', 'upload_pic.html')
+        path = os.path.join(os.path.dirname(__file__) + '/templates/', 'upload_pic.html')
         self.response.out.write(template.render(path, template_values))
 
     def post(self):
-        upload = self.get_uploads("img")[0]
         url_string = self.request.get('key')
         key = ndb.Key(urlsafe=url_string)
         site = key.get()
-        site.imgurl = images.get_serving_url(upload.key())
-        site.put()
 
+        origin_img = self.get_uploads("img")[0]
+        origin_key = origin_img.key()
+
+        origin_img = images.Image(blob_key=origin_img.key())
+        origin_img.resize(width=150)
+        origin_img.im_feeling_lucky()
+        thumbnail = origin_img.execute_transforms(output_encoding=images.PNG)
+
+        site.imgkey = origin_key
+        site.imgurl = images.get_serving_url(origin_key)
+        site.thumbnail_uri = thumbnail.encode("base64").replace("\n", "")
+        site.put()
+        memcache.delete("index")
         self.redirect('/')
 
 
 class Redirect2Site(webapp2.RequestHandler):
-    def get(self):
-        key = self.request.get('key')
-        site = ndb.Key(urlsafe=key)
+    def get(self, resource):
+        site = ndb.Key(urlsafe=resource)
         site = site.get()
         url = site.url
         site.count = site.count + 1
         site.put()
-        # url = self.key2url(key)
         self.redirect(url.encode('utf8'))
-        # self.response.out.write(url)
+
+
+class DownloadHandler(blobstore_handlers.BlobstoreDownloadHandler):
+    def get(self, resource):
+        resource = str(urllib.unquote(resource))
+        blob_info = blobstore.BlobInfo.get(resource)
+        self.send_blob(blob_info)
+        # self.response.out.write(resource)
+
+
+class Thumbnail(webapp2.RequestHandler):
+    def get(self, resource):
+        if self.request.headers.get('If-Modified-Since'):
+            self.error(304)
+            return
+        thumbnail = self.key2thumbnail(resource)
+        # site = ndb.Key(urlsafe=resource)
+        # site = site.get()
+        # thumbnail = site.thumbnail_uri.decode("base64")
+        self.response.headers['Content-Type'] = 'image/png'
+        self.response.headers['Last-Modified'] = 'Thu, 19 Feb 2009 16:00:07 GMT'
+        self.response.headers['Cache-Control'] = 'public, max-age=315360000'
+        self.response.out.write(thumbnail)
 
     @staticmethod
-    def key2url(key):
-        url = memcache.get('key')
-        if url is not None:
-            return url
+    def key2thumbnail(key):
+        thumbnail = memcache.get(key)
+        if thumbnail is not None:
+            return thumbnail
         else:
             site = ndb.Key(urlsafe=key).get()
-            url = site.imgurl
-            memcache.add('key', url, 86400)
-            return url
+            thumbnail = site.thumbnail_uri.decode("base64")
+            memcache.add(key, thumbnail, 86400)
+            return thumbnail
+
+    def output_content(self, content, serve=True):
+        if serve:
+            self.response.out.write(content.body)
+        else:
+            self.response.set_status(304)
+

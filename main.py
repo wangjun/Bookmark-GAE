@@ -26,6 +26,8 @@ class MainHandler(webapp2.RequestHandler):
 app = webapp2.WSGIApplication([
     ('/', Index),
     ('/new/', NewSite),
-    ('/to/', Redirect2Site),
-    ('/upload_pic/', UploadPic)
+    ('/go/(.*)', Redirect2Site),
+    ('/upload_pic/', UploadPic),
+    ('/download/(.*)', DownloadHandler),
+    ('/thumbnail/(.*)', Thumbnail),
 ], debug=True)

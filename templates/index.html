@@ -78,12 +78,11 @@
                         <div class="caption">
                             <h4>{{ site.title }}</h4>
                         </div>
-                        {% if site.imgurl %}
-                        <a href="/to/?key={{ site.key.urlsafe }}"><img alt="Bootstrap Thumbnail First"
-                                                                      class="img-responsive img-rounded"
-                                                                      src="{{ site.imgurl }}=s150"/></a>
+                        {% if site.thumbnail_uri %}
+                        <a href="/go/{{ site.key.urlsafe }}"><img alt="Bootstrap Thumbnail First" class="img-responsive img-rounded"
+                                                                    src="/thumbnail/{{ site.key.urlsafe }}?static=true" /></a>
                         {% else %}
-                        <p><a class="btn btn-primary" href="/to/?key={{ site.key.urlsafe }}">访问</a>
+                        <p><a class="btn btn-primary" href="/go/{{ site.key.urlsafe }}">访问</a>
                             <a class="btn btn-primary" href="/upload_pic/?key={{ site.key.urlsafe }}">加图</a></p>
                         {% endif %}
 
